@@ -40,12 +40,12 @@ library(lme4)
 run <- 'run_LG'
 
 # source(here::here('Scripts/bestandsnamen_invoergegevens.R'))
-source(here::here('Scripts/VBI_Functies.R'))
-source(here::here('Scripts/VBI3_Functies.R'))
+source(here::here('src/VBI_Functies.R'))
+source(here::here('src/VBI3_Functies.R'))
 
 afgewerkt <- c(0)  # VBI1 en VBI2; alsof er nog geen reeksen van VBI3 afgewerkt zijn
 # afgewerkt <- c(1,2) # reeksen 1 en 2 afgewerkt; wijzigt jaarlijks! - nu enkel focussen op VBI1 en VBI2
-source(here::here('Scripts/VBI3_constanten.R'))
+source(here::here('src/VBI3_constanten.R'))
 
 ```
 
@@ -134,7 +134,7 @@ Naast boomgegevens hebben we ook info nodig over plots zonder bomen met diameter
 
 
 ```{r load_data, results='hide'}
-load(here::here("data_boomniveau.RData"))
+load(here::here("data/data_boomniveau.RData"))
 
 # individuele boommetingen met reeds berekend volume en biomassa
 names(trees_living5)
@@ -211,7 +211,7 @@ Eenzelfde discrepantie tss design based en mixed models (zie verder) zien we wan
 ```{r KiesPeriode}
 afgewerkt <- c(0) # 10 reeksen VBI1 en 10 reeksen VBI2
 # afgewerkt <- c(1,2) #20% van VBI3 is afgewerkt
-source(here::here("scripts/VBI3_constanten.R"))
+source(here::here("src/VBI3_constanten.R"))
 
 ```
 
