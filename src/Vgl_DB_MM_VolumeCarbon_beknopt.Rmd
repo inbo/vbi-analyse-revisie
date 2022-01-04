@@ -1,0 +1,467 @@
+---
+title: "Volume, biomassa en koolstofgehalte volgens FRL en INBO-advies A.3104 (methode 4b)"
+author: "Anja Leyman, Leen Govaere"
+date: "`r Sys.Date()`"
+output:
+  html_document:
+    number_sections: yes
+    fig_caption: yes
+    code_folding: hide
+    toc: TRUE
+    toc_float:
+      collapsed: FALSE
+      smooth_scroll: FALSE
+
+---
+
+```{r Rm, eval = FALSE}
+rm(list=ls())
+```
+
+
+```{r Setup, include = FALSE}
+
+library(knitr)
+knitr::opts_chunk$set(
+  echo = TRUE,
+  message = FALSE,
+  warning = FALSE, 
+  fig.width = 9,
+  fig.align = TRUE)
+
+library(tidyverse)
+library(RODBC)
+library(here)
+library(DT)
+library(openssl)
+library(kableExtra)
+library(lme4)
+
+run <- 'run_LG'
+
+# source(here::here('Scripts/bestandsnamen_invoergegevens.R'))
+source(here::here('Scripts/VBI_Functies.R'))
+source(here::here('Scripts/VBI3_Functies.R'))
+
+afgewerkt <- c(0)  # VBI1 en VBI2; alsof er nog geen reeksen van VBI3 afgewerkt zijn
+# afgewerkt <- c(1,2) # reeksen 1 en 2 afgewerkt; wijzigt jaarlijks! - nu enkel focussen op VBI1 en VBI2
+source(here::here('Scripts/VBI3_constanten.R'))
+
+```
+
+
+# Vraagstelling
+
+**Vraag ivm gebruik van mixed models versus design based bij de dataverwerking van de VBI**
+
+Bij welk soort meetvragen is gebruik van MM wel of niet aangeraden? 
+
+Ik dacht steeds voor toestand design-based en voor verschillen mixed models, omdat dan de BI's smaller zijn door rekening te houden met de gepaarde plots.
+
+In het analyserapport lees ik *"Een design-based analyse is geschikt voor het bepalen van een toestand voor een bepaalde periode, maar minder geschikt voor het bepalen van een verschil tussen periodes omdat het moeilijk kan omgaan met de (gedeeltelijk) gepaarde plots.
+Daarom raden we mixed models (§7.2.5) aan voor analyseren van verschillen of trends."*
+
+Meer concreet vroegen we ons af hoe jij (jullie bij BMK) een inschatting zouden maken van de aangroei van de houtvoorraad of van de carbon stock over gans Vlaanderen? 
+
+Mbv design-based berekeningen, of mbv mixed-models?
+
+In het INBO-advies (INBO.A.3844) over berekening van totaal volume hout per boomsoort (ikv LULUCF) werd design-based gewerkt. 
+
+Idem dito in het advies over carbon stock change (INBO.A.4103) dat Luc en ik (Anja) schreven (samen met Suzanne en Bruno). 
+
+# Methodiek
+
+## Algemeen
+
+Dit script is een beknopte versie van een script dat volume, biomassa en koolstofgehalte berekent volgens FRL en INBO-advies A.3104 (methode 4b).
+
+Onderstaand script berekent **biomassa** en **koolstofgehalte (C)** volgens methode 4b uit het advies.
+Bijkomend worden ook **stamvolume**, **stompvolume** en **totaal volume** (die de basis vormen van de biomassa-berekeningen) expliciet berekend.
+Deze methode wordt gebruikt door ULG (Sébastien Bauwens) en voor de aanmaak van de FRL (Forest Reference Level).
+Ook de VMM heeft na het INBO-advies beslist om deze methode te hanteren in het kader van de LULUCF-rapporteringen.
+
+Conform het hoger vermeld advies worden **alle plots met verjonging en/of bomen > 7 cm dbh** bij de analyse betrokken. 
+Of met andere woorden, alle plots waar een soort aan gekoppeld kan worden.
+Dus zonder kaalslagen of tijdelijke open ruimtes.
+Het advies INBO A.3104 heeft zich hiervoor dan weer gebaseerd op het INBO-advies A.3844 mbt volume hout in bossen in Vlaanderen. Ook daar worden enkel deze plots bij de analyse betrokken.
+
+
+## Berekeningen
+
+**Algemeen**
+
+$$\ C = \ V *  BEF * WD * \left(\ 1 + R \right) * FC$$
+
+met 
+
+- C = carbon stock (tC/ha)
+- V = stamvolume > 7 cm (m³/ha)
+- BEF = branch/biomass expansion factor: om het totale bovengrondse houtvolume (inclusief zwaar en dun kroonhout) te berekenen, vertrekkende van het stamvolume (diameter > 7 cm) 
+- WD = wood density: om van volume naar biomassa over te gaan (t/m³)
+- FC = carbon factor: ton C/ton droge biomassa (= 0.5)
+- R = verhouding ondergrondse biomassa tov bovengrondse biomassa
+
+<br>
+
+**Concreet**
+
+In onderstaand script gebruiken we de berekeningswijze voor biomassa conform de FRL: 
+
+- BEF/VEF van Longuetaud: dit zijn variabele BEF's (afh. van diameter en hoogte)
+- factoren cfr. FRL (R, FC, WD)
+    - FC = 0.5
+
+<br>
+De factoren van Longuetaud zijn niet enkel boomsoort-afhankelijk, maar worden mede bepaald door diameter en hoogte van de boom.
+Bijgevolg zijn we verplicht te vertrekken van individuele boommetingen (*tbl0Boom*).
+
+<br>
+
+# Referentie
+
+Note technique version 20/11/2017. Estimation du volume et biomasse de différents compartiments de l’arbre. 
+Accompagnement scientifique de l’IPRFW. Uliège - Wallonie environnement SPW.
+
+<br>
+
+
+# Invoer gegevens
+
+Om het script wat behapbaar te houden, vetrekken we van data op boomniveau, met volume, biomassa en carbon reeds berekend.
+(even getwijfeld om enkel de analyseset (plotniveau) aan te leveren, maar misschien beter dat je een breder zicht op de analyse hebt)
+
+Naast boomgegevens hebben we ook info nodig over plots zonder bomen met diameter > 7 cm (plots waar StemVolume_m3_ha = 0).
+
+
+```{r load_data, results='hide'}
+load(here::here("data_boomniveau.RData"))
+
+# individuele boommetingen met reeds berekend volume en biomassa
+names(trees_living5)
+dim(trees_living5)
+table(trees_living5$Periode)
+
+# plots zonder volume/biomassa
+names(analyseSet_0_biomassa)
+dim(analyseSet_0_biomassa)
+table(analyseSet_0_biomassa$Periode)
+
+# tbl_PlotDetailsbevat info over gekoppelde plots (belangrijk voor mixed models)
+names(tbl_PlotDetails)
+dim(tbl_PlotDetails)
+table(tbl_PlotDetails$Periode)
+```
+
+# Aanmaak analyseset (plotniveau)
+
+We zijn vertrokken van `tbl0Boom` (uit analysedb) => bosoppervlakte van de bosplot in rekening brengen mbv Fext_ha
+
+- A4-bomen: Fext_ha = 10.000/AreaA4_m2_Plot
+- A3-bomen: Fext_ha = 10.000/AreaA3_m2_Plot
+
+AreaA4_m2/AreaA3_m2 is oppervlakte op segmentniveau, maar daar maken we hier geen gebruik van, omdat we hier onmiddelijk alles op plotniveau berekenen. 
+
+
+```{r plotniveau, results = 'hide'}
+colnames(trees_living5)
+analyseSet <- trees_living5 %>%
+  dplyr::group_by(IDPlots, Periode, PlotWeight, DateDendro, REEKS) %>%   
+  dplyr::summarise(
+            CheckVolumeTotaal = sum(Volume_m3*Fext_Ha, na.rm = TRUE),    
+            StemVolume_m3_ha = sum(StemVolume_m3*Fext_Ha, na.rm = TRUE), # met correctie voor dunne boompjes met volume Dagnelie = 0 (zie chunck "volume_cilinder_afgeknotte_kegel") 
+            StemVolume_m3_ha_v4 = sum(StemVolume_m3_v4*Fext_Ha, na.rm = TRUE),  # cfr Dagnelie/Quataert (repo v4)
+            VolumeStump_m3_ha = sum(VolumeStump_m3*Fext_Ha, na.rm = TRUE),
+            TotalVolumeVEF_m3_ha = sum(TotalVolume_m3*Fext_Ha, na.rm = TRUE),
+            Biomass_t_ha = sum(TotalBiomass_t*Fext_Ha, na.rm = TRUE),
+            Carbon_t_ha = sum(TotalCarbon_t*Fext_Ha, na.rm = TRUE),
+            # test = StemVolume_m3_ha - StemVolume_m3_ha_v4,
+            # test_proc = 100*test /StemVolume_m3_ha_v4
+            ) %>%
+  dplyr::ungroup() %>%
+  dplyr::rename(Year = DateDendro,
+         Weight = PlotWeight, Reeks = REEKS)
+
+# summary(trees_living5)
+```
+
+
+```{r add_bosplots_without_volume_obvtbl10, results='hide'}
+analyseSet2 <- rbind(analyseSet, analyseSet_0_biomassa)
+nrow(analyseSet) + nrow(analyseSet_0_biomassa) - nrow(analyseSet2)
+
+analyseSet <- analyseSet2 %>% 
+  select(-CheckVolumeTotaal, -StemVolume_m3_ha_v4, -VolumeStump_m3_ha, -TotalVolumeVEF_m3_ha)
+
+names(analyseSet)
+```
+
+
+# Selectie periode
+
+Tot hier werden er volumes etc per boom/plot berekend, ongeacht de periode of reeks waarin de opname is gebeurd.
+Voor rapportering willen we een voortschrijdend gemiddelde gaan berekenen, over de plots die gedurende de laatste tien jaar zijn gemeten. Een aantal reeksen van die plots zijn 10 jaar eerder gemeten, een voorlopig nog groter aantal is gemiddeld 15 jaar geleden gemeten.
+Om makkelijk de desbetreffende plots/reeksen te selecteren maken we gebruik van de functie `get_last_20y`.
+
+Voor het gemak zou ik voorstellen om nu even te focussen op VBI1 en VBI2, zonder rekening te houden met VBI3.
+Daarvoor kiezen we in onderstaande chunck voor `afgewerkt <- c(0)`
+
+Eenzelfde discrepantie tss design based en mixed models (zie verder) zien we wanneer we de reeds afgewerkte 2 reeksen van VBI3 bij de analyse betrekken `afgewerkt <- c(1,2)`.
+
+
+```{r KiesPeriode}
+afgewerkt <- c(0) # 10 reeksen VBI1 en 10 reeksen VBI2
+# afgewerkt <- c(1,2) #20% van VBI3 is afgewerkt
+source(here::here("scripts/VBI3_constanten.R"))
+
+```
+
+
+## analyseset met data van 10 opgemeten reeksen 
+
+```{r analyseSet_GekozenPeriode, results='hide'}
+analyseSet <- get_last_20y(Data = analyseSet2, Afgewerkt = afgewerkt)
+table(analyseSet$Periode);table(analyseSet$VBI)
+
+```
+
+
+# Statistieken
+
+## Design based
+
+```{r statistics_per_periode, results = 'hide'}
+colnames(analyseSet)
+variables_for_statistics <- c("StemVolume_m3_ha", "VolumeStump_m3_ha", "TotalVolumeVEF_m3_ha", "Biomass_t_ha", "Carbon_t_ha")
+
+p1 <- My.WgtParEstimation(analyseSet,VariableName = variables_for_statistics,Periode= 1)
+p2 <- My.WgtParEstimation(analyseSet,VariableName = variables_for_statistics,Periode= 2)
+
+Resultaat <- rbind (p1, p2)
+colnames(Resultaat)
+Resultaat[10:13] <- round(Resultaat[10:13],3)
+Resultaat
+
+vars <- c("periode", "minYear", "maxYear", "minReeks", "maxReeks")
+
+Resultaat <- Resultaat %>%
+    mutate_at(vars, factor)
+
+result_db <- Resultaat   # design-based
+
+```
+
+
+## Model based analyse
+
+```{r }
+df20 <- analyseSet %>%
+    inner_join(tbl_PlotDetails, by = c("IDPlots", c("VBI" = "Periode"))) %>% # IDGroup
+    filter(!is.na(IDGroup))
+```
+
+### Aanmaak modellen stemvolume
+
+```{r lmer_verschil}
+Model.lmer_20 <- lmer(formula =  StemVolume_m3_ha ~ fPeriode + (1|IDGroup), data = df20 , weight=Weight)  
+
+summary(Model.lmer_20)
+plot(Model.lmer_20)
+
+
+df20$E<-resid(Model.lmer_20)
+qqnorm(df20$E)
+ggplot(df20,aes(x=fPeriode,y=E))+geom_boxplot()
+
+ggplot(df20,aes(x=IDGroup,y=E,colour=fPeriode,group=IDGroup)) +
+  geom_point()+geom_line() +
+  labs(y="Residual",x="IDGepaard")
+
+print(get_lmer_output(Model = Model.lmer_20))
+
+```
+
+
+```{r lmer_nulmodel}
+#nulmodel, nodig om toestand (vs verschil) te berekenen/weg te schrijven naar db
+Model.lmer_20_0 <- lmer( StemVolume_m3_ha ~ 0 + fPeriode + (1|IDGroup), data = df20,
+                                 weight=Weight)
+summary(Model.lmer_20_0)
+plot(Model.lmer_20_0)
+
+df20$E<-resid(Model.lmer_20_0)
+qqnorm(df20$E)
+ggplot(df20,aes(x=fPeriode,y=E))+geom_boxplot()
+
+ggplot(df20,aes(x=IDGroup,y=E,colour=fPeriode,group=IDGroup)) +
+  geom_point()+geom_line() +
+  labs(y="Residual",x="IDGepaard")
+
+```
+
+
+### Schatting StemVolume_m3_ha TOESTAND per periode
+
+```{r}
+results.toestand <- My.ParametersMB(Data = df20, VariableName = "StemVolume_m3_ha",
+                                    GLMERModel = Model.lmer_20_0, Type = "toestand")
+
+print(get_lmer_output(Model.lmer_20_0))
+# results.toestand
+results.toestand$Periode <- as.factor(results.toestand$Periode )
+
+result_mm_V <- results.toestand
+
+```
+
+
+### Schatting StemVolume_m3_ha VERSCHIL tussen de twee periodes 
+
+```{r}
+
+results.verschil <-My.ParametersMB(Data = df20, VariableName = "StemVolume_m3_ha",GLMERModel = Model.lmer_20,Type = "verschil")
+
+print(get_lmer_output(Model.lmer_20))
+# results.verschil
+
+result_mm_V_diff <- results.verschil
+```
+
+### Aanmaak modellen carbon
+
+```{r}
+
+# StemVolume_m3_ha : hierin Weight al verrekend -- weight = 1 zetten? 
+Model.lmer_20 <- lmer(formula =  Carbon_t_ha ~ fPeriode + (1|IDGroup), data = df20 , weight=Weight)
+
+summary(Model.lmer_20)
+plot(Model.lmer_20)
+df20$E<-resid(Model.lmer_20_0)
+qqnorm(df20$E)
+ggplot(df20,aes(x=fPeriode,y=E))+geom_boxplot()
+
+ggplot(df20,aes(x=IDGroup,y=E,colour=fPeriode,group=IDGroup)) +
+  geom_point()+geom_line() +
+  labs(y="Residual",x="IDGepaard")
+
+print(get_lmer_output(Model.lmer_20))
+```
+
+
+```{r}
+#nulmodel, nodig om toestand (vs verschil) te berekenen/weg te schrijven naar db
+Model.lmer_20_0 <- lmer( Carbon_t_ha ~ 0 + fPeriode + (1|IDGroup), data = df20,
+                                 weight=Weight)
+summary(Model.lmer_20_0)
+plot(Model.lmer_20_0)
+
+df20$E<-resid(Model.lmer_20_0)
+qqnorm(df20$E)
+ggplot(df20,aes(x=fPeriode,y=E))+geom_boxplot()
+
+ggplot(df20,aes(x=IDGroup,y=E,colour=fPeriode,group=IDGroup)) +
+  geom_point()+geom_line() +
+  labs(y="Residual",x="IDGepaard")
+
+```
+
+
+### Schatting Carbon_t_ha TOESTAND tussen de twee periodes 
+
+```{r}
+results.toestand <- My.ParametersMB(Data = df20, VariableName = "Carbon_t_ha",
+                                    GLMERModel = Model.lmer_20_0, Type = "toestand")
+
+print(get_lmer_output(Model.lmer_20_0))
+
+# results.toestand
+results.toestand$Periode <- as.factor(results.toestand$Periode )
+
+result_mm_C <- results.toestand
+
+```
+
+### Schatting Carbon_t_ha VERSCHIL tussen de twee periodes 
+
+```{r }
+
+results.verschil <-My.ParametersMB(Data = df20, VariableName = "Carbon_t_ha",GLMERModel = Model.lmer_20,Type = "verschil")
+
+print(get_lmer_output(Model.lmer_20))
+# results.verschil
+
+result_mm_C_diff <- results.verschil
+
+```
+
+
+# Vergelijking design based - mixed models
+
+Probleem: de resultaten tss design-based en mixed-models liggen in het geval van volume en carbon (biomassa) toch wel wat uit elkaar. 
+
+Ik lees in het analyserapport op p120 (ivm houtvoorraad) het volgende: *"Dus de design-based schatter (of het gewone lineair model) geven misschien iets exacter het verschil in de totale houtvoorraad, terwijl de model-based schatter eerder een juistere inschatting geeft van de toename in houtvoorraad gemiddeld genomen in een plot."*
+
+Welke methode (MM of DB) gebruiken we dan best als we een inschatting van de aangroei (van volume of van biomassa) op niveau Vlaanderen willen berekenen?
+
+ 
+
+```{r results='hide'}
+vars <- c("Periode", "MinYear", "MaxYear", "MinReeks", "MaxReeks")
+
+result_mm <- rbind(result_mm_V, result_mm_C) %>% 
+  mutate(type = "M") %>% 
+  mutate_at(.vars = vars, factor) %>% 
+  rename(variabele = Variable)
+colnames(result_mm) <-  str_to_lower(colnames(result_mm))
+
+result_mm_diff <- rbind(result_mm_V_diff, result_mm_C_diff)
+colnames(result_mm_diff) <-  str_to_lower(colnames(result_mm_diff))
+
+result_db <- result_db %>% 
+  filter(variabele %in% c("StemVolume_m3_ha", "Carbon_t_ha")) %>% 
+  mutate(type = "D") %>% 
+  rename(mean = wgt.mean)
+colnames(result_db) <-  str_to_lower(colnames(result_db))
+
+names(result_db)
+names(result_mm)
+names(result_mm_diff)
+```
+
+```{r vgl_DB_MM_toestand, results='hide'}
+result_db_ <- result_db %>% select(-wgt.var)
+vgl_toestand <- rbind(result_mm, result_db_)
+
+vgl_toestand_wide <- vgl_toestand %>% 
+  dplyr::select(variabele, periode, mean, type) %>% 
+  spread(key = type, value = mean, sep = "_") %>% 
+  rename(design_based = type_D, mixed_model = type_M) %>% 
+  mutate_if(is.numeric, round, 2)
+  
+```
+
+```{r}
+vgl_toestand_wide %>% 
+  DT::datatable(filter = "none", selection = "none", rownames = FALSE, 
+                options = list(pageLength = 5, dom = 'tip'))
+```
+
+```{r vgl_DB_MM_verschil, results='hide'}
+vgl_verschil <- vgl_toestand %>% 
+  dplyr::select(variabele, periode, mean, type) %>% 
+  spread(key = periode, value = mean, sep = "_") %>% 
+  mutate(increase = periode_2 - periode_1)
+
+vgl_verschil_wide <- vgl_verschil %>% 
+  dplyr::select(variabele, type, increase) %>% 
+  spread(key = type, value = increase, sep = "_") %>% 
+  rename(design_based = type_D, mixed_model = type_M) %>% 
+  mutate_if(is.numeric, round, 2)
+  
+```
+
+
+```{r}
+vgl_verschil_wide %>% 
+  DT::datatable(filter = "none", selection = "none", rownames = FALSE, 
+                options = list(pageLength = 5, dom = 'tip'))
+```
