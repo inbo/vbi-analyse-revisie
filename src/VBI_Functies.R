@@ -124,6 +124,7 @@ My.WgtParEstimation<-function(Data,VariableName,Periode=NA,MinReeks=1,MaxReeks=1
                           nbObservaties=nrow(DataSel),
                           wgt.mean=wgt.mean,
                           wgt.var=wgt.var,
+                          se = sqrt(wgt.var)/sqrt(V1),
                           llci=lci,
                           ulci=uci)
 
@@ -550,45 +551,45 @@ my.CalcVolBranches<-function(treeMeasurements,tarieven,varNamePerimeter="Perimet
 #' @importFrom
 #' @examples
 
-My.ResultsToDatabase <-function (results, 
-                                 dbHandle = dbResultaten_path, 
-                                 tblName ="tblResultaten", 
-                                 type, 
-                                 scriptName=NULL, 
-                                 scriptLocation=c("1KenmBosOpp", "2Verjonging", "3DendroKwant", "4Vegetatie", "5Indices", "6DoodHout", "Temp", "AanvraagGegevens"), 
-                                 description, 
-                                 forestedge = c("met randplots", "zonder randplots", "enkel randplots"), 
-                                 datasource=NULL, 
-                                 datasource_hash=NULL, 
-                                 request_from=NULL, 
+My.ResultsToDatabase <-function (results,
+                                 dbHandle = dbResultaten_path,
+                                 tblName ="tblResultaten",
+                                 type,
+                                 scriptName=NULL,
+                                 scriptLocation=c("1KenmBosOpp", "2Verjonging", "3DendroKwant", "4Vegetatie", "5Indices", "6DoodHout", "Temp", "AanvraagGegevens"),
+                                 description,
+                                 forestedge = c("met randplots", "zonder randplots", "enkel randplots"),
+                                 datasource=NULL,
+                                 datasource_hash=NULL,
+                                 request_from=NULL,
                                  run_by=c(NA, "run_AL", "run_LG", "run_TW", "test", "test_AL", "test_LG", "test_TW"))
 {
-  
+
   stateOrTrend <- ifelse ("Periode_t1" %in% colnames (results),"verschil","toestand")
-      # forestedge <- ifelse(is.na(forestedge), "met randplots", forestedge)   
+      # forestedge <- ifelse(is.na(forestedge), "met randplots", forestedge)
       # overbodig: als parameter niet ingevuld wordt, wordt eerste waarde van de lijst genomen
-  
+
   forestedge <- match.arg(forestedge)
   scriptLocation <- match.arg(scriptLocation)
   run_by <- match.arg(run_by)
-  
+
   # als run_by niet gespecifieerd is --> IP-adres nemen
-  
+
   if(is.na(run_by)){
     x <- system("ipconfig", intern=TRUE)
     z <- x[grep("IPv4", x)]
     IP <- gsub(".*? ([[:digit:]])", "\\1", z)
     run_by <- IP
     warning('!! WARNING: "RUn" werd niet gespecifieerd --> Run_by = IP-adres')
-  }  else { #als run_by wél gespecifieerd is 
+  }  else { #als run_by wél gespecifieerd is
     run_by <- run_by
   }
-  
-  
+
+
   if (type %in% c("D","M")){
-    
+
     if (type=="D"){
-      
+
       # temp: om fctie te testen
       # results <- Resultaat
       # type <- "D"
@@ -596,7 +597,7 @@ My.ResultsToDatabase <-function (results,
       # zonderRandplots <- "ja"
       # stateOrTrend <- "toestand"
       # tblName <-"tblResultaten"
-      
+
       tblResults <-data.frame(variabele=results$variabele,
                               analyseType = type,
                               scriptNaam = scriptName,
@@ -617,14 +618,14 @@ My.ResultsToDatabase <-function (results,
                               BI_ondergrens=round(results$llci,4),
                               BI_bovengrens=round(results$ulci,4),
                               brondata = datasource,
-                              brondataHash = datasource_hash, 
+                              brondataHash = datasource_hash,
                               aanvraag = request_from,
                               run = run_by)
-      
+
     } else if (type=="M"){
-      
+
       if (stateOrTrend == "verschil"){
-        
+
         tblResults <-data.frame(variabele=results$Variable,
                                 analyseType=type,
                                 scriptNaam = scriptName,
@@ -654,10 +655,10 @@ My.ResultsToDatabase <-function (results,
                                 brondataHash = datasource_hash,
                                 aanvraag = request_from,
                                 run = run_by)
-        
-        
+
+
       } else if (stateOrTrend == "toestand") {
-        
+
         tblResults <-data.frame(variabele=results$Variable,
                                 analyseType=type,
                                 scriptNaam = scriptName,
@@ -681,33 +682,33 @@ My.ResultsToDatabase <-function (results,
                                 brondataHash = datasource_hash,
                                 aanvraag = request_from,
                                 run = run_by)
-        
+
       }
     }
-    
+
     tblName <-  paste(tblName,stateOrTrend,sep = "_")
-    
-    connectieResultaten <- odbcConnectAccess2007(dbHandle) 
-    
+
+    connectieResultaten <- odbcConnectAccess2007(dbHandle)
+
     listTbl<-sqlTables(connectieResultaten)
-    
+
     # als tblResultaten nog niet is aangemaakt --> nieuwe tabel aanmaken
     if(!tblName %in% listTbl$TABLE_NAME){
-      
+
       tblData <- sqlSave(connectieResultaten, tblResults, tblName)
-      
+
     }  else { #als tabel bestaat records toevoegen aan tabel
-      
+
       tblData <- sqlSave(connectieResultaten,tblResults, tblName,append = TRUE)
-      
+
     }
-    
+
     odbcClose(connectieResultaten)
-    
+
   } else {
     cat("Vul een D of een M in voor type analyse (D = design-based en M = model-based)  ")
   }
-  
+
 }
 
 ####-------------------------------------------------------------------------------
