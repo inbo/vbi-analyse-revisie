@@ -457,7 +457,7 @@ vgl_toestand_wide %>%
   
 vgl_verschil_wide <- bind_rows(
   result_mm_diff %>%
-    select(variabele = Variable, verschil = Verschil, llci = Llci, ulci = Ulci) %>%
+    select(variabele = variable, verschil, llci, ulci) %>%
     mutate(type = "M"),
   result_db_diff %>%
     select(variabele, verschil, llci, ulci, type)
