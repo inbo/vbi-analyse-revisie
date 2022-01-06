@@ -238,7 +238,7 @@ p2 <- My.WgtParEstimation(analyseSet,VariableName = variables_for_statistics,Per
 
 Resultaat <- rbind (p1, p2)
 colnames(Resultaat)
-Resultaat[10:13] <- round(Resultaat[10:13],3)
+Resultaat[10:14] <- round(Resultaat[10:14],3)
 Resultaat
 
 vars <- c("periode", "minYear", "maxYear", "minReeks", "maxReeks")
@@ -266,7 +266,6 @@ Model.lmer_20 <- lmer(formula =  StemVolume_m3_ha ~ fPeriode + (1|IDGroup), data
 
 summary(Model.lmer_20)
 plot(Model.lmer_20)
-
 
 df20$E<-resid(Model.lmer_20)
 qqnorm(df20$E)
@@ -422,18 +421,27 @@ result_db <- result_db %>%
   rename(mean = wgt.mean)
 colnames(result_db) <-  str_to_lower(colnames(result_db))
 
+result_db_diff <- result_db %>%
+  select(variabele, periode, mean, se, type) %>%
+  pivot_wider(names_from = "periode", values_from = c("mean", "se")) %>%
+  mutate(verschil = mean_2 - mean_1,
+         verschil_se = sqrt(se_1^2 + se_2^2),
+         llci = verschil - 1.96 * verschil_se,
+         ulci = verschil + 1.96 * verschil_se)
+
 names(result_db)
 names(result_mm)
 names(result_mm_diff)
 ```
 
 ```{r vgl_DB_MM_toestand, results='hide'}
-result_db_ <- result_db %>% select(-wgt.var)
-vgl_toestand <- rbind(result_mm, result_db_)
+result_db_ <- result_db %>% select(-wgt.var, -se)
+vgl_toestand <- bind_rows(result_mm, result_db_)
 
 vgl_toestand_wide <- vgl_toestand %>% 
-  dplyr::select(variabele, periode, mean, type) %>% 
-  spread(key = type, value = mean, sep = "_") %>% 
+  mutate(estimate = str_c(round(mean, 1), " [", round(llci, 1), " - ", round(ulci, 1), "]")) %>%
+  dplyr::select(variabele, periode, estimate, type) %>% 
+  spread(key = type, value = estimate, sep = "_") %>% 
   rename(design_based = type_D, mixed_model = type_M) %>% 
   mutate_if(is.numeric, round, 2)
   
@@ -446,17 +454,20 @@ vgl_toestand_wide %>%
 ```
 
 ```{r vgl_DB_MM_verschil, results='hide'}
-vgl_verschil <- vgl_toestand %>% 
-  dplyr::select(variabele, periode, mean, type) %>% 
-  spread(key = periode, value = mean, sep = "_") %>% 
-  mutate(increase = periode_2 - periode_1)
-
-vgl_verschil_wide <- vgl_verschil %>% 
-  dplyr::select(variabele, type, increase) %>% 
-  spread(key = type, value = increase, sep = "_") %>% 
-  rename(design_based = type_D, mixed_model = type_M) %>% 
-  mutate_if(is.numeric, round, 2)
   
+vgl_verschil_wide <- bind_rows(
+  result_mm_diff %>%
+    select(variabele = Variable, verschil = Verschil, llci = Llci, ulci = Ulci) %>%
+    mutate(type = "M"),
+  result_db_diff %>%
+    select(variabele, verschil, llci, ulci, type)
+) %>%
+  mutate(verschil = str_c(round(verschil, 1), " [", round(llci, 1), " - ", round(ulci, 1), "]")) %>%
+  select(variabele, type, verschil) %>%
+  pivot_wider(names_from = "type", values_from = "verschil") %>%
+  rename(model_based = M, design_based = D)
+  
+
 ```
 
 
