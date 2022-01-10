@@ -29,13 +29,14 @@ knitr::opts_chunk$set(
   fig.width = 9,
   fig.align = TRUE)
 
+library(MASS)
 library(tidyverse)
 library(RODBC)
 library(here)
 library(DT)
 library(openssl)
-library(kableExtra)
 library(lme4)
+#library(WeMix)
 
 run <- 'run_LG'
 
@@ -251,7 +252,9 @@ result_db <- Resultaat   # design-based
 ```
 
 
-## Model based analyse
+
+
+## Model based analyse met lmer
 
 ```{r }
 df20 <- analyseSet %>%
@@ -263,8 +266,10 @@ df20 <- analyseSet %>%
 
 ```{r lmer_verschil}
 Model.lmer_20 <- lmer(formula =  StemVolume_m3_ha ~ fPeriode + (1|IDGroup), data = df20 , weight=Weight)  
+Model.lmer_20_noweight <- lmer(formula =  StemVolume_m3_ha ~ fPeriode + (1|IDGroup), data = df20)
 
 summary(Model.lmer_20)
+summary(Model.lmer_20_noweight)
 plot(Model.lmer_20)
 
 df20$E<-resid(Model.lmer_20)
@@ -393,6 +398,8 @@ result_mm_C_diff <- results.verschil
 ```
 
 
+
+
 # Vergelijking design based - mixed models
 
 Probleem: de resultaten tss design-based en mixed-models liggen in het geval van volume en carbon (biomassa) toch wel wat uit elkaar. 
@@ -476,3 +483,626 @@ vgl_verschil_wide %>%
   DT::datatable(filter = "none", selection = "none", rownames = FALSE, 
                 options = list(pageLength = 5, dom = 'tip'))
 ```
+# Verkenning mogelijke oorzaken
+
+## Gebruik van gewichten
+
+
+### Vergelijking model met en zonder gewichten
+
+Het gebruik van gewichten heeft weinig invloed op het resultaat.
+
+```{r}
+Model.lmer_20 <- lmer(formula =  StemVolume_m3_ha ~ fPeriode + (1|IDGroup), data = df20 , weight=Weight)  
+Model.lmer_20_noweight <- lmer(formula =  StemVolume_m3_ha ~ fPeriode + (1|IDGroup), data = df20)
+
+compare_models_weight <- bind_rows(My.ParametersMB(Data = df20, 
+                                                   VariableName = "StemVolume_m3_ha", 
+                                                   GLMERModel = Model.lmer_20, 
+                                                   Type = "verschil") %>%
+                                     mutate(model = "with weights"),
+                                   My.ParametersMB(Data = df20, 
+                                                   VariableName = "StemVolume_m3_ha", 
+                                                   GLMERModel = Model.lmer_20_noweight, 
+                                                   Type = "verschil") %>%
+                                     mutate(model = "without weights")
+                                                   ) %>%
+  mutate(estimate_verschil = str_c(round(Verschil, 1), " [", round(Llci, 1), " - ", round(Ulci, 1), "]")) %>%
+  select(model, estimate_verschil ) 
+ 
+compare_models_weight %>%
+  datatable(rownames = FALSE)
+```
+
+
+
+### Model based analyse met WeMix
+
+
+```{r, eval=FALSE}
+df20$W2 <- 1
+
+Model.WeMix_20_0 <- mix( StemVolume_m3_ha ~ fPeriode + (1|IDGroup), 
+                         data = df20,
+                         weights = c("Weight", "W2"))
+
+summary(Model.WeMix_20_0)
+```
+
+Een alternatief voor lme4 is het R-package [WeMix](https://american-institutes-for-research.github.io/WeMix/) dat specifiek ontworpen is voor het gebruiken van gewichten voor steekproefeenheden.
+
+Het geeft onderstaande uitkomst (duurt nogal lang om model te runnen). Het verschil met de resultaten op basis van lme4 is redelijk klein.  
+
+Variance terms:
+Groups:
+
+Fixed Effects:
+            Estimate Std. Error t value
+(Intercept)  207.382      2.390   86.77
+fPeriode2     71.230      2.984   23.87
+
+lnl= -32521.36 
+Intraclass Correlation= 0.6593 
+
+
+## Vertekening gepaarde plots
+
+
+### Verschil in gemiddelde volumes per ha en C per ha
+
+Onderstaande figuur en tabel tonen aan dat:
+
++ de gemiddelde volumes per ha voor beide periodes hoger licht bij gepaarde plots dan bij niet gepaarde plots;
++ de toename in volume per ha (verschil tussen gemiddeldes voor beide periodes) groter is bij gepaarde plots dan bij niet gepaarde plots.
+
+Hetzelfde geldt voor ton C per ha.
+
+```{r}
+df20_paired <- df20 %>%
+  select(IDPlots, IDGroup, Reeks, Year, Periode, Weight, StemVolume_m3_ha,  Carbon_t_ha) %>%
+  group_by(IDPlots) %>%
+  mutate(paired = (n_distinct(IDGroup) == 1) & 
+           (n_distinct(Periode) == 2)) %>%
+  ungroup() 
+
+df20_paired %>%
+  pivot_longer(cols = c("StemVolume_m3_ha", "Carbon_t_ha"), names_to = "variable", values_to = "value") %>%
+  mutate(Periode = as.factor(Periode),
+         paired_fig = ifelse(paired, "gepaarde plot", "niet gepaarde plot")) %>%
+  ggplot(aes(x = Periode, y = value)) +
+  stat_summary(fun.data = "mean_cl_boot",  alpha = 0.8) +
+  facet_grid(variable ~ paired_fig, scales = "free")
+```
+
+
+```{r}
+
+
+df20_paired <- df20_paired %>%
+  mutate(gepaard = ifelse(paired, "gepaarde_plot", "niet_gepaarde_plot"),
+         gepaard = factor(gepaard)) %>%
+  as.data.frame()
+
+p1_paired <- My.WgtParEstimation(df20_paired, 
+                          UseStrata = c(TRUE, TRUE),
+                          Strata = c("gepaard", "gepaard"),
+                          VariableName = c("StemVolume_m3_ha", "Carbon_t_ha"),
+                          Periode = 1)
+
+p2_paired <- My.WgtParEstimation(df20_paired, 
+                          UseStrata = c(TRUE, TRUE),
+                          Strata = c("gepaard", "gepaard"),
+                          VariableName = c("StemVolume_m3_ha", "Carbon_t_ha"),
+                          Periode = 2)
+
+p1 <- My.WgtParEstimation(df20_paired, 
+                          VariableName = c("StemVolume_m3_ha", "Carbon_t_ha"),
+                          Periode = 1)
+
+p2 <- My.WgtParEstimation(df20_paired,
+                         VariableName = c("StemVolume_m3_ha", "Carbon_t_ha"),
+                          Periode = 2)
+
+result_db_paired <- bind_rows(p1_paired,
+                              p2_paired,
+                              p1,
+                              p2) %>%
+  mutate(stratumNaam = ifelse(stratumNaam == "", "alle_plots", stratumNaam))
+
+
+colnames(result_db_paired) <-  str_to_lower(colnames(result_db_paired))
+
+result_db_diff <- result_db_paired %>%
+  select(variabele, stratumnaam, periode, wgt.mean, se) %>%
+  pivot_wider(names_from = "periode", values_from = c("wgt.mean", "se")) %>%
+  mutate(verschil = wgt.mean_2 - wgt.mean_1,
+         verschil_se = sqrt(se_1^2 + se_2^2),
+         llci = verschil - 1.96 * verschil_se,
+         ulci = verschil + 1.96 * verschil_se,
+         verschil_estimate = str_c(round(verschil, 2), " [", round(llci, 2), " - ", round(ulci, 2), "]")) %>%
+  arrange(variabele)
+
+
+result_db_diff %>%
+  select(variabele, stratumnaam, verschil_estimate) %>%
+  datatable(rownames = FALSE)
+```
+
+
+
+
+### Schatting gemiddelde verschil per plot op basis van gepaarde plots
+
+We vergelijken hier de design-based en model-based schatting van het gemiddelde verschil per plot op basis de gepaarde plots.
+
+
+
+```{r}
+
+verschil_paired <- df20_paired %>%
+  filter(paired) %>%
+  select(-Reeks, -Year) %>%
+  pivot_longer(cols = c("StemVolume_m3_ha", "Carbon_t_ha"), names_to = "variable", values_to = "value") %>%
+  pivot_wider(names_from = c("Periode"), values_from = c("value", "Weight")) %>%
+  mutate(verschil = value_2  - value_1)
+
+verschil_paired %>%
+  ggplot(aes(x = verschil)) +
+  geom_histogram() +
+  facet_wrap(~variable, scales = "free_x")
+```
+
+De gemiddelde verschillen in onderstaande tabel komen overeen met deze in de vorige tabel (verschil in gemiddelde toestand), maar de betrouwbaarheidsintervallen zijn smaller (wat te verwachten is want we houden rekning met de gepaardheid van de plots).  
+
+```{r}
+mean_verschil_paired <- verschil_paired %>%
+  group_by(variable) %>%
+  summarise(mean_verschil_plot = sum(verschil * Weight_2)/sum(Weight_2),
+            var = var(verschil),
+            n = n_distinct(IDPlots)) %>%
+  ungroup() %>%
+  mutate(se = sqrt(var)/sqrt(n),
+         llci = mean_verschil_plot - 1.96 * se,
+         ulci = mean_verschil_plot + 1.96 * se,
+         mean_verschil_estimate = str_c(round(mean_verschil_plot, 2), " [", round(llci, 2), " - ", round(ulci, 2), "]"))
+
+
+  mean_verschil_paired %>%
+    select(variable, mean_verschil_estimate) %>%
+    arrange(variable) %>%
+    datatable(rownames = FALSE,
+              caption = "Design-based schatting van gemiddelde verschil op plotniveau voor de gepaarde plots")
+```
+
+De model-based schatting voor de gepaarde plots geven hier wel een goede overeenkomst met de design-based schatting.
+
+```{r }
+
+df20_paired_plots <- df20_paired %>%
+  filter(paired) %>%
+  mutate(fPeriode = factor(Periode))
+
+Model.lmer_vol_paired <- lmer(formula =  StemVolume_m3_ha ~ fPeriode + (1|IDGroup), 
+                          data = df20_paired_plots, 
+                          weight = Weight)
+
+Model.lmer_c_paired <- lmer(formula =  Carbon_t_ha ~ fPeriode + (1|IDGroup), 
+                          data = df20_paired_plots, 
+                          weight = Weight)
+
+# summary(Model.lmer_vol_paired)
+# summary(Model.lmer_c_paired)
+
+verschil_vol_paired <- My.ParametersMB(Data = df20_paired_plots, 
+                                       VariableName = "StemVolume_m3_ha",
+                                       GLMERModel = Model.lmer_vol_paired,
+                                       Type = "verschil")
+
+verschil_c_paired <- My.ParametersMB(Data = df20_paired_plots, 
+                                       VariableName = "Carbon_t_ha",
+                                       GLMERModel = Model.lmer_c_paired,
+                                       Type = "verschil")
+
+verschil_paired <- bind_rows(verschil_vol_paired,
+                             verschil_c_paired) 
+
+colnames(verschil_paired) <- str_to_lower(colnames(verschil_paired))
+
+verschil_paired %>%
+  mutate(verschil_estimate = str_c(round(verschil, 2), " [", round(llci, 2), " - ", round(ulci, 2), "]")) %>%
+  select(variable, verschil_estimate) %>%
+  arrange(variable) %>%
+  datatable(rownames = FALSE,
+            caption = "Schatting van verschil op basis van mixed model met enkel gepaarde plots") 
+
+
+```
+### Vergelijk random effects tussen gepaarde en niet gepaarde plots
+
+```{r}
+df20_all_plots <- df20_paired %>%
+  mutate(fPeriode = factor(Periode))
+
+Model.lmer_vol_paired <- lmer(formula =  StemVolume_m3_ha ~ fPeriode + (1|IDGroup), 
+                          data = df20_all_plots, 
+                          weight = Weight)
+
+random_intercept <- (ranef(Model.lmer_vol_paired))$IDGroup %>%
+  rownames_to_column(var = "IDGroup") %>%
+  rename(u = "(Intercept)")
+
+df20_all_plots <- df20_all_plots %>%
+  left_join(random_intercept, by = "IDGroup") %>%
+  mutate(resid = resid(Model.lmer_vol_paired),
+         fitted = fitted(Model.lmer_vol_paired),
+         intercept = fixef(Model.lmer_vol_paired)[1],
+         fperiode2 = fixef(Model.lmer_vol_paired)[2])
+```
+
+
+```{r}
+
+df20_all_plots %>%
+  ggplot(aes(y = u, x = gepaard)) +
+  geom_boxplot() +
+  facet_wrap(~Periode)
+  
+```
+
+```{r}
+df20_all_plots %>%
+  ggplot(aes(y = resid, x = gepaard)) +
+  geom_boxplot() +
+  facet_wrap(~Periode)
+```
+
+# Simulatie
+
+Op basis van de gegevens van de VBI simuleren we verschillende datasets. 
+Voor de simulatie baseren we ons op de variantie en covarianties tussen de verschillende periodes voor gepaarde en niet gepaarde plots.
+
+```{r}
+correlation_paired <- df20_paired %>%
+  group_by(IDPlots) %>%
+  filter(n() >= 2) %>%
+  ungroup() %>%
+  dplyr::select(-Reeks, -Year, -IDGroup) %>%
+  pivot_longer(cols = c("StemVolume_m3_ha", "Carbon_t_ha"), names_to = "variable", values_to = "value") %>%
+  pivot_wider(names_from = c("Periode"), values_from = c("value", "Weight"))
+
+
+correlation_paired %>%
+  ggplot(aes(x = value_1, y = value_2)) +
+  geom_point(alpha = 0.2) +
+  facet_grid(variable ~ paired)
+
+
+
+
+correlation_paired_summary <- correlation_paired %>%
+  group_by(paired, variable) %>%
+  summarise(cor_12 = round(cor(value_1, value_2), 2),
+            cov_12 = round(cov(value_1, value_2), 2),
+            var_1 = round(var(value_1), 1),
+            var_2 = round(var(value_2), 1)) %>%
+  ungroup()
+
+correlation_paired_summary %>%
+  datatable(rownames = FALSE)
+
+```
+We vergelijken drie scenario's.
+
+## Sceanrio 1
+
++ Zelfde gemiddelde en variantie voor gepaarde en niet gepaarde plots
+  + 1000 plots waarvan de helft gepaard
+  + gemiddelde volume periode 1 = 225 m³/ha
+  + gemiddelde volume periode 1 = 275 m³/ha
+  + covariantie gepaard plots = 14000
+  + variantie gepaarde plots = 20000
+  + covariantie niet gepaard plots = 7000
+  + variantie niet gepaard plots = 20000
+
+
+```{r}
+mean_vol_1 = 225
+mean_vol_2 = 275
+cov_gepaard = 14000
+var_gepaard = 20000
+cov_nt_gepaard = 7000
+var_nt_gepaard = 20000
+
+
+# create the variance covariance matrix
+sigma_gepaard <- rbind(c(var_gepaard, cov_gepaard), c(cov_gepaard, var_gepaard))
+# create the mean vector
+mu <- c(mean_vol_1, mean_vol_2) 
+
+sim_data_paired <- data.frame(plot_id = 1:500,
+                              paired = TRUE)
+
+vol_sim_paired <- mvrnorm(n = nrow(sim_data_paired), mu=mu, Sigma=sigma_gepaard) %>%
+  as.data.frame()
+
+sim_data_paired <- sim_data_paired %>%
+  bind_cols(vol_sim_paired)
+
+sigma_nt_gepaard <- rbind(c(var_nt_gepaard, cov_nt_gepaard), c(cov_nt_gepaard, var_nt_gepaard))
+# create the mean vector
+
+sim_data_nt_gepaard <- data.frame(plot_id = 1:500,
+                              paired = FALSE)
+
+vol_sim_nt_gepaard <- mvrnorm(n = nrow(sim_data_nt_gepaard), mu=mu, Sigma=sigma_nt_gepaard) %>%
+  as.data.frame()
+
+sim_data_nt_gepaard <- sim_data_nt_gepaard %>%
+  bind_cols(vol_sim_nt_gepaard)
+
+sim_data <- bind_rows(sim_data_nt_gepaard, sim_data_paired) %>%
+  # mutate(V1 = ifelse(V1 < 0, 0, V1),
+  #        V2 = ifelse(V2 < 0, 0, V2)) %>%
+  pivot_longer(cols = c("V1", "V2"), names_to = "Periode", values_to = "volume_ha") %>%
+  mutate(Periode = ifelse(Periode == "V1", "1", "2"),
+         fPeriode = factor(Periode),
+         group_id = ifelse(paired, str_c(plot_id, "_1"),
+                           str_c(plot_id, "_", Periode)),
+         Reeks = 1,
+         Year = 1,
+         IDPlots = plot_id,
+         Weight = 1)
+
+check <- sim_data %>%
+  group_by( Periode) %>%
+  summarise(mean = mean(volume_ha)) %>%
+  ungroup()
+```
+
+```{r}
+model_sim_toestand <- lmer(formula =  volume_ha ~ 0 + fPeriode + (1|group_id), 
+                          data = sim_data)
+
+model_sim_verschil <- lmer(formula =  volume_ha ~ fPeriode + (1|group_id), 
+                          data = sim_data)
+
+result_toestand_M <- My.ParametersMB(Data = sim_data, VariableName = "volume_ha", GLMERModel = model_sim_toestand, Type = "toestand") %>%
+            mutate(type = "model-based") %>%
+  dplyr::select(type, periode = Periode, variable = Variable, mean = Mean, llci = Llci, ulci = Ulci)
+
+result_toestand_D <- bind_rows(
+  My.WgtParEstimation(Data = sim_data, VariableName = "volume_ha", Periode = 1),
+  My.WgtParEstimation(Data = sim_data, VariableName = "volume_ha", Periode = 2)) %>%
+            mutate(type = "design-based",
+                   periode = as.character(periode)) %>%
+  rename(variable = variabele, mean = wgt.mean)
+
+```
+
+Onderstaande resultaten tonen dat de model-based en designed-based schattingen zeer gelijkaardig zijn.  
+
+```{r}
+bind_rows(result_toestand_M ,
+          result_toestand_D) %>%
+mutate(estimate = str_c(round(mean, 1), " [", round(llci, 1), " - ", round(ulci, 1), "]")) %>%
+  dplyr::select(type, periode, variable, estimate) %>% 
+datatable(rownames = FALSE)
+```
+
+
+## Sceanrio 2
+
+Dit scenario komt overeen met de situatie van de Vlaamse bosinventarisatie:
+
++ Hogere gemiddelde volumes en grotere toename in volume voor gepaarde plots in vergelijking met niet gepaarde plots
+  + 1000 plots waarvan de helft gepaard
+  + gemiddelde volume gepaarde plots periode 1 = 225 m³/ha
+  + gemiddelde volume gepaarde plots periode 2 = 275 m³/ha
+  + gemiddelde volume niet gepaarde plots periode 1 = 175 m³/ha
+  + gemiddelde volume niet gepaarde plots periode 2 = 200 m³/ha
+  + covariantie gepaard plots = 14000
+  + variantie gepaarde plots = 20000
+  + covariantie niet gepaard plots = 7000
+  + variantie niet gepaard plots = 20000
+  
+```{r}
+kans_gepaard = 0.5
+mean_vol_1_gepaard = 225
+mean_vol_2_gepaard = 275
+mean_vol_1_nt_gepaard = 175
+mean_vol_2_nt_gepaard = 200
+cov_gepaard = 14000
+var_gepaard = 20000
+cov_nt_gepaard = 7000
+var_nt_gepaard = 20000
+
+
+# create the variance covariance matrix
+sigma_gepaard <- rbind(c(var_gepaard, cov_gepaard), c(cov_gepaard, var_gepaard))
+# create the mean vector
+mu_gepaard <- c(mean_vol_1_gepaard, mean_vol_2_gepaard) 
+# generate the multivariate normal distribution
+
+sim_data_paired <- data.frame(plot_id = 1:500,
+                              paired = TRUE)
+
+vol_sim_paired <- mvrnorm(n = nrow(sim_data_paired), mu = mu_gepaard, Sigma = sigma_gepaard) %>%
+  as.data.frame()
+
+sim_data_paired <- sim_data_paired %>%
+  bind_cols(vol_sim_paired)
+
+sigma_nt_gepaard <- rbind(c(var_nt_gepaard, cov_nt_gepaard), c(cov_nt_gepaard, var_nt_gepaard))
+# create the mean vector
+
+mu_nt_gepaard <- c(mean_vol_1_nt_gepaard, mean_vol_2_nt_gepaard) 
+
+sim_data_nt_gepaard <- data.frame(plot_id = 1:500,
+                              paired = FALSE)
+
+vol_sim_nt_gepaard <- mvrnorm(n = nrow(sim_data_nt_gepaard), mu = mu_nt_gepaard, Sigma = sigma_nt_gepaard) %>%
+  as.data.frame()
+
+sim_data_nt_gepaard <- sim_data_nt_gepaard %>%
+  bind_cols(vol_sim_nt_gepaard)
+
+sim_data <- bind_rows(sim_data_nt_gepaard, sim_data_paired) %>%
+  # mutate(V1 = ifelse(V1 < 0, 0, V1),
+  #        V2 = ifelse(V2 < 0, 0, V2)) %>%
+  pivot_longer(cols = c("V1", "V2"), names_to = "Periode", values_to = "volume_ha") %>%
+  mutate(Periode = ifelse(Periode == "V1", "1", "2"),
+         fPeriode = factor(Periode),
+         group_id = ifelse(paired, str_c(plot_id, "_1"),
+                           str_c(plot_id, "_", Periode)),
+         Reeks = 1,
+         Year = 1,
+         IDPlots = plot_id,
+         Weight = 1)
+
+check <- sim_data %>%
+  group_by( Periode) %>%
+  summarise(mean = mean(volume_ha)) %>%
+  ungroup()
+```
+
+```{r}
+model_sim_toestand <- lmer(formula =  volume_ha ~ 0 + fPeriode + (1|group_id), 
+                          data = sim_data)
+
+model_sim_verschil <- lmer(formula =  volume_ha ~ fPeriode + (1|group_id), 
+                          data = sim_data)
+
+result_toestand_M <- My.ParametersMB(Data = sim_data, VariableName = "volume_ha", GLMERModel = model_sim_toestand, Type = "toestand") %>%
+            mutate(type = "model-based") %>%
+  dplyr::select(type, periode = Periode, variable = Variable, mean = Mean, llci = Llci, ulci = Ulci)
+
+result_toestand_D <- bind_rows(
+  My.WgtParEstimation(Data = sim_data, VariableName = "volume_ha", Periode = 1),
+  My.WgtParEstimation(Data = sim_data, VariableName = "volume_ha", Periode = 2)) %>%
+            mutate(type = "design-based",
+                   periode = as.character(periode)) %>%
+  rename(variable = variabele, mean = wgt.mean)
+
+```
+
+Net zoals bij de VBI zien we dat de model-based schatting het volume in de eerste periode sterk onderschat.
+
+```{r}
+bind_rows(result_toestand_M ,
+          result_toestand_D) %>%
+mutate(estimate = str_c(round(mean, 1), " [", round(llci, 1), " - ", round(ulci, 1), "]")) %>%
+  dplyr::select(type, periode, variable, estimate) %>% 
+datatable(rownames = FALSE)
+```
+
+## Sceanrio 3
+
++ Hogere gemiddelde volumes voor gepaarde plots maar gelijke toename in vergelijking met niet gepaarde plots
+  + 1000 plots waarvan de helft gepaard
+  + gemiddelde volume gepaarde plots periode 1 = 225 m³/ha
+  + gemiddelde volume gepaarde plots periode 2 = 275 m³/ha
+  + gemiddelde volume niet gepaarde plots periode 1 = 175 m³/ha
+  + gemiddelde volume niet gepaarde plots periode 2 = 225 m³/ha
+  + covariantie gepaard plots = 14000
+  + variantie gepaarde plots = 20000
+  + covariantie niet gepaard plots = 7000
+  + variantie niet gepaard plots = 20000
+  
+```{r}
+kans_gepaard = 0.5
+mean_vol_1_gepaard = 225
+mean_vol_2_gepaard = 275
+mean_vol_1_nt_gepaard = 175
+mean_vol_2_nt_gepaard = 225
+cov_gepaard = 14000
+var_gepaard = 20000
+cov_nt_gepaard = 7000
+var_nt_gepaard = 20000
+
+
+# create the variance covariance matrix
+sigma_gepaard <- rbind(c(var_gepaard, cov_gepaard), c(cov_gepaard, var_gepaard))
+# create the mean vector
+mu_gepaard <- c(mean_vol_1_gepaard, mean_vol_2_gepaard) 
+# generate the multivariate normal distribution
+
+sim_data_paired <- data.frame(plot_id = 1:500,
+                              paired = TRUE)
+
+vol_sim_paired <- mvrnorm(n = nrow(sim_data_paired), mu = mu_gepaard, Sigma = sigma_gepaard) %>%
+  as.data.frame()
+
+sim_data_paired <- sim_data_paired %>%
+  bind_cols(vol_sim_paired)
+
+sigma_nt_gepaard <- rbind(c(var_nt_gepaard, cov_nt_gepaard), c(cov_nt_gepaard, var_nt_gepaard))
+# create the mean vector
+
+mu_nt_gepaard <- c(mean_vol_1_nt_gepaard, mean_vol_2_nt_gepaard) 
+
+sim_data_nt_gepaard <- data.frame(plot_id = 1:500,
+                              paired = FALSE)
+
+vol_sim_nt_gepaard <- mvrnorm(n = nrow(sim_data_nt_gepaard), mu = mu_nt_gepaard, Sigma = sigma_nt_gepaard) %>%
+  as.data.frame()
+
+sim_data_nt_gepaard <- sim_data_nt_gepaard %>%
+  bind_cols(vol_sim_nt_gepaard)
+
+sim_data <- bind_rows(sim_data_nt_gepaard, sim_data_paired) %>%
+  # mutate(V1 = ifelse(V1 < 0, 0, V1),
+         # V2 = ifelse(V2 < 0, 0, V2)) %>%
+  pivot_longer(cols = c("V1", "V2"), names_to = "Periode", values_to = "volume_ha") %>%
+  mutate(Periode = ifelse(Periode == "V1", "1", "2"),
+         fPeriode = factor(Periode),
+         group_id = ifelse(paired, str_c(plot_id, "_1"),
+                           str_c(plot_id, "_", Periode)),
+         Reeks = 1,
+         Year = 1,
+         IDPlots = plot_id,
+         Weight = 1)
+
+check <- sim_data %>%
+  group_by( Periode) %>%
+  summarise(mean = mean(volume_ha)) %>%
+  ungroup()
+```
+
+```{r}
+model_sim_toestand <- lmer(formula =  volume_ha ~ 0 + fPeriode + (1|group_id), 
+                          data = sim_data)
+
+model_sim_verschil <- lmer(formula =  volume_ha ~ fPeriode + (1|group_id), 
+                          data = sim_data)
+
+result_toestand_M <- My.ParametersMB(Data = sim_data, VariableName = "volume_ha", GLMERModel = model_sim_toestand, Type = "toestand") %>%
+            mutate(type = "model-based") %>%
+  dplyr::select(type, periode = Periode, variable = Variable, mean = Mean, llci = Llci, ulci = Ulci)
+
+result_toestand_D <- bind_rows(
+  My.WgtParEstimation(Data = sim_data, VariableName = "volume_ha", Periode = 1),
+  My.WgtParEstimation(Data = sim_data, VariableName = "volume_ha", Periode = 2)) %>%
+            mutate(type = "design-based",
+                   periode = as.character(periode)) %>%
+  rename(variable = variabele, mean = wgt.mean)
+
+```
+
+Ook hier geeft de model-based benadering een onderschatting van de toestand in de eerste periode.
+
+```{r}
+bind_rows(result_toestand_M ,
+          result_toestand_D) %>%
+mutate(estimate = str_c(round(mean, 1), " [", round(llci, 1), " - ", round(ulci, 1), "]")) %>%
+  dplyr::select(type, periode, variable, estimate) %>% 
+datatable(rownames = FALSE)
+```
+# Conclusies
+
++ Design-based schattingen van de toestand zijn steeds onvertekend. Het geschatte verschil tussen twee periodes zal echter een lagere precisie hebben als dit gebaseerd is op het verschil tussen de gemiddeldes per periode. Dit komt omdat we dan geen rekening houden met de gepaardheid tussen de plots.
+
++ Model-based schattingen van toestand en verschil op basis van een mixed model leidt tot vertekening als de gemiddelde volumes en/of de toename in volume sterk verschillende is in gepaarde en niet-gepaarde plots. 
+
++ Model-based schattingen kunnen onvertekende en preciezere schattingen geven van het verschil tussen periodes: 
+  + Wanneer de dataset enkel uit gepaarde plots bestaan, 
+  + of wanneer de gemiddeldes en de toename tussen de periodes niet sterk verschillen voor gepaarde en niet gepaarde plots

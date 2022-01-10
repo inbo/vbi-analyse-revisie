@@ -95,6 +95,7 @@ My.WgtParEstimation<-function(Data,VariableName,Periode=NA,MinReeks=1,MaxReeks=1
                             nbObservaties=length(DataStrat$IDPlots),
                             wgt.mean=wgt.mean,
                             wgt.var=wgt.var,
+                            se = sqrt(wgt.var)/sqrt(V1),
                             llci=lci,
                             ulci=uci)
         if (s<=1){
