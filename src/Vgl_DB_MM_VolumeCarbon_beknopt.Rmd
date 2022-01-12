@@ -232,6 +232,17 @@ table(analyseSet$VBI)
 
 ## Design based
 
+De functie `My.WgtParEstimation` berekent een gewogen gemiddelde en gewogen variantie.
+Met deze variantie wordt een 95% betrouwbaarheidsinterval geconstrueerd gebaseerd  op een normale verdeling.
+De weging is hier een variabele die aangeeft of een proefvlakcirkel al dan niet volledig in bos gelegen is.
+Deze weging is dus geen survey-gewicht (omgekeerde van inclusiekans).
+
+De gebruikte formules zijn equivalent met deze van een enkelvoudige aselecte steekproef.
+De VBI is echter een systematische steekproef waarbij een grid van 0.5 km x 1 km met een random start over Vlaanderen gelegd is.
+De variantie van een systematische steekproef met random start is kleiner dan de variantie van een enkelvoudige aselecte steekproef indien we kunnen verwachten dat er autocorrelatie in het kenmerk dat we willen inschatten.
+Dit betekent dat de betrouwbaarheidsintervallen meer dan waarschijnlijk breder zijn dan nodig.
+
+
 ```{r statistics_per_periode, results = 'hide'}
 colnames(analyseSet)
 variables_for_statistics <- c("StemVolume_m3_ha", "VolumeStump_m3_ha", "TotalVolumeVEF_m3_ha", "Biomass_t_ha", "Carbon_t_ha")
@@ -275,7 +286,7 @@ df20 <- analyseSet %>%
 Model.lmer_20 <- lmer(
   formula = StemVolume_m3_ha ~ fPeriode + (1 | IDGroup),
   data = df20,
-  weight = Weight)
+  weights = Weight)
 Model.lmer_20_noweight <- lmer(
   formula = StemVolume_m3_ha ~ fPeriode + (1 | IDGroup),
   data = df20)
@@ -302,7 +313,7 @@ print(get_lmer_output(Model = Model.lmer_20))
 # nulmodel, nodig om toestand (vs verschil) te berekenen/weg te schrijven naar db
 Model.lmer_20_0 <- lmer(StemVolume_m3_ha ~ 0 + fPeriode + (1 | IDGroup),
   data = df20,
-  weight = Weight
+  weights = Weight
 )
 summary(Model.lmer_20_0)
 plot(Model.lmer_20_0)
@@ -316,6 +327,8 @@ ggplot(df20, aes(x = IDGroup, y = E, colour = fPeriode, group = IDGroup)) +
   geom_point() +
   geom_line() +
   labs(y = "Residual", x = "IDGepaard")
+
+print(get_lmer_output(Model = Model.lmer_20_0))
 ```
 
 
