@@ -221,7 +221,8 @@ source(here::here("src/VBI3_constanten.R"))
 ## analyseset met data van 10 opgemeten reeksen 
 
 ```{r analyseSet_GekozenPeriode, results='hide'}
-analyseSet <- get_last_20y(Data = analyseSet2, Afgewerkt = afgewerkt)
+analyseSet <- get_last_20y(Data = analyseSet2, Afgewerkt = afgewerkt) %>%
+  as_tibble()
 table(analyseSet$Periode)
 table(analyseSet$VBI)
 ```
@@ -235,8 +236,14 @@ table(analyseSet$VBI)
 colnames(analyseSet)
 variables_for_statistics <- c("StemVolume_m3_ha", "VolumeStump_m3_ha", "TotalVolumeVEF_m3_ha", "Biomass_t_ha", "Carbon_t_ha")
 
-p1 <- My.WgtParEstimation(analyseSet, VariableName = variables_for_statistics, Periode = 1)
-p2 <- My.WgtParEstimation(analyseSet, VariableName = variables_for_statistics, Periode = 2)
+p1 <- My.WgtParEstimation(
+  analyseSet,
+  VariableName = variables_for_statistics,
+  Periode = 1)
+p2 <- My.WgtParEstimation(
+  analyseSet,
+  VariableName = variables_for_statistics,
+  Periode = 2)
 
 Resultaat <- rbind(p1, p2)
 colnames(Resultaat)
@@ -265,8 +272,13 @@ df20 <- analyseSet %>%
 ### Aanmaak modellen stemvolume
 
 ```{r lmer_verschil}
-Model.lmer_20 <- lmer(formula = StemVolume_m3_ha ~ fPeriode + (1 | IDGroup), data = df20, weight = Weight)
-Model.lmer_20_noweight <- lmer(formula = StemVolume_m3_ha ~ fPeriode + (1 | IDGroup), data = df20)
+Model.lmer_20 <- lmer(
+  formula = StemVolume_m3_ha ~ fPeriode + (1 | IDGroup),
+  data = df20,
+  weight = Weight)
+Model.lmer_20_noweight <- lmer(
+  formula = StemVolume_m3_ha ~ fPeriode + (1 | IDGroup),
+  data = df20)
 
 summary(Model.lmer_20)
 summary(Model.lmer_20_noweight)
