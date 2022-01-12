@@ -886,13 +886,29 @@ df20_all_plots %>%
 Op basis van de gegevens van de VBI simuleren we verschillende datasets. 
 Voor de simulatie baseren we ons op de variantie en covarianties tussen de verschillende periodes voor gepaarde en niet gepaarde plots.
 
+<!--Hans: onderstaande code kan ik niet goed volgen. Ongepaarde plots en toch waarden voor beide perioden?
+Wat is het verschil tussen IDPlots en IDGRoup?
+Betekent dit dat eenzelfde IDPlots verschoven is in ruimte tov periode 1 en periode 2 wanneer deze gelabeled is als niet gepaard?
+Ik denk dat deze "semi-gepaardheid" dan ook in het model moet zitten.
+Een verschoven proefvlak bevindt zich nog steeds in een vergelijkbare context.
+Misschien de random effects structuur aanpassen?
+(1 | IDplots / IDGroup)
+
+of 
+
+(1 + gepaard | IDplots)
+
+-->
+
+
 ```{r}
 correlation_paired <- df20_paired %>%
   group_by(IDPlots) %>%
   filter(n() >= 2) %>%
   ungroup() %>%
   dplyr::select(-Reeks, -Year, -IDGroup) %>%
-  pivot_longer(cols = c("StemVolume_m3_ha", "Carbon_t_ha"), names_to = "variable", values_to = "value") %>%
+  pivot_longer(cols = c("StemVolume_m3_ha", "Carbon_t_ha"),
+               names_to = "variable", values_to = "value") %>%
   pivot_wider(names_from = c("Periode"), values_from = c("value", "Weight"))
 
 
