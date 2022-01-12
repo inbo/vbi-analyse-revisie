@@ -300,6 +300,19 @@ qqnorm(df20$E)
 ggplot(df20, aes(x = fPeriode, y = E)) +
   geom_boxplot()
 
+df20 %>%
+  group_by(IDGroup) %>%
+  mutate(gepaard = ifelse(n() == 2, "1 en 2", as.character(Periode))) %>%
+  ggplot() +
+  geom_point(aes(x = fitted(Model.lmer_20), 
+                 y = resid(Model.lmer_20),
+                 colour = gepaard,
+                 shape = gepaard),
+             alpha = 0.3) +
+  geom_smooth(aes(x = fitted(Model.lmer_20), 
+                 y = resid(Model.lmer_20))) +
+  geom_hline(yintercept = 0)
+
 ggplot(df20, aes(x = IDGroup, y = E, colour = fPeriode, group = IDGroup)) +
   geom_point() +
   geom_line() +
@@ -376,9 +389,20 @@ result_mm_V_diff <- results.verschil
 ### Aanmaak modellen carbon
 
 ```{r}
+df20 %>%
+  ggplot() + 
+  geom_point(aes(x = StemVolume_m3_ha, y = Carbon_t_ha,
+                 colour = fPeriode),
+             alpha = 0.2)
+```
+
+
+```{r}
 
 # StemVolume_m3_ha : hierin Weight al verrekend -- weight = 1 zetten?
-Model.lmer_20 <- lmer(formula = Carbon_t_ha ~ fPeriode + (1 | IDGroup), data = df20, weight = Weight)
+Model.lmer_20 <- lmer(formula = Carbon_t_ha ~ fPeriode + (1 | IDGroup),
+                      data = df20,
+                      weight = Weight)
 
 summary(Model.lmer_20)
 plot(Model.lmer_20)
@@ -386,6 +410,19 @@ df20$E <- resid(Model.lmer_20_0)
 qqnorm(df20$E)
 ggplot(df20, aes(x = fPeriode, y = E)) +
   geom_boxplot()
+
+df20 %>%
+  group_by(IDGroup) %>%
+  mutate(gepaard = ifelse(n() == 2, "1 en 2", as.character(Periode))) %>%
+  ggplot() +
+  geom_point(aes(x = fitted(Model.lmer_20), 
+                 y = resid(Model.lmer_20),
+                 colour = gepaard,
+                 shape = gepaard),
+             alpha = 0.3) +
+  geom_smooth(aes(x = fitted(Model.lmer_20), 
+                 y = resid(Model.lmer_20))) +
+  geom_hline(yintercept = 0)
 
 ggplot(df20, aes(x = IDGroup, y = E, colour = fPeriode, group = IDGroup)) +
   geom_point() +
