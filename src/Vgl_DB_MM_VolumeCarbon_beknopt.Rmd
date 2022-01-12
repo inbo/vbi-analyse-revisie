@@ -308,7 +308,6 @@ ggplot(df20, aes(x = IDGroup, y = E, colour = fPeriode, group = IDGroup)) +
 print(get_lmer_output(Model = Model.lmer_20))
 ```
 
-
 ```{r lmer_nulmodel}
 # nulmodel, nodig om toestand (vs verschil) te berekenen/weg te schrijven naar db
 Model.lmer_20_0 <- lmer(StemVolume_m3_ha ~ 0 + fPeriode + (1 | IDGroup),
@@ -330,6 +329,14 @@ ggplot(df20, aes(x = IDGroup, y = E, colour = fPeriode, group = IDGroup)) +
 
 print(get_lmer_output(Model = Model.lmer_20_0))
 ```
+
+`Model.lmer_20` en `Model.lmer_20_0` schatten exact hetzelfde model, alleen is de parametrisatie verschillend.
+In het tweede geval is er geen intercept gefit, waardoor onmiddellijk de predicties voor periode 1 en 2 uit de parameterschattingen af te lezen zijn.
+In het eerste geval wordt wel een intercept gefit, waardoor de intercept overeenkomt met periode 1 en de schatting voor periode 2 het verschil geeft ten opzichte van periode 1.
+
+Het gaat hier om lineaire mixed models.
+Voor de responsvariabele wordt dus een Gaussiaanse verdeling aangenomen.
+De gepaardheid van de proefvlakcirkels wordt in rekening gebracht door het random intercept.
 
 
 ### Schatting StemVolume_m3_ha TOESTAND per periode
