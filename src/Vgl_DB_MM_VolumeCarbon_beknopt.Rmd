@@ -338,6 +338,12 @@ Het gaat hier om lineaire mixed models.
 Voor de responsvariabele wordt dus een Gaussiaanse verdeling aangenomen.
 De gepaardheid van de proefvlakcirkels wordt in rekening gebracht door het random intercept.
 
+De proefvlakgewichten worden via het `weights` argument van `lmer()` doorgegeven aan het model.
+Dit argument wordt als volgt beschreven:
+
+> an optional vector of ‘prior weights’ to be used in the fitting process. Should be NULL or a numeric vector. Prior weights are not normalized or standardized in any way. In particular, the diagonal of the residual covariance matrix is the squared residual standard deviation parameter sigma times the vector of inverse weights. Therefore, if the weights have relatively large magnitudes, then in order to compensate, the sigma parameter will also need to have a relatively large magnitude.
+
+Deze definitie van `weights` is dus anders dan hoe de gewichten gebruikt werden in de design-based formules.
 
 ### Schatting StemVolume_m3_ha TOESTAND per periode
 
