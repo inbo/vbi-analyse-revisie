@@ -358,6 +358,27 @@ Dit argument wordt als volgt beschreven:
 
 Deze definitie van `weights` is dus anders dan hoe de gewichten gebruikt werden in de design-based formules.
 
+Een ander aandachtspunt is de modelvalidatie.
+Met de huidige modelstructuur is er duidelijk een probleem bij de figuur die residuals versus fitted toont waarbij de punten gelabeld zijn met al dan niet gepaard.
+De reden hiervoor is waarschijnlijk dat niet alle aspecten van het design in rekening gebracht werden.
+De random-effects structuur moet alle mogelijke gevallen reflecteren:
+
+- plot is verplaatst (relocated)
+- plot is vervangen (replaced)
+- plot is behouden en teruggevonden
+
+ook nodig om rekening te houden met:
+
+- bos in periode 1 -> geen bos in periode 2
+- geen bos in periode 1 -> bos in periode 2
+
+
+Bij de modelvalidatie zou het ook zeker aan te raden zijn om eens een kaart te maken van de punten (X, Y) waarbij de grootte en kleur van de punten afhankelijk is van, respectievelijk, de absolute waarde van de residuen en het teken van de residuen.
+Het is te verwachten dat bossen op arme / rijke bodems negatieve / positieve residuen hebben.
+Als dat zo blijkt te zijn, dan zal een _poststratificatie_ volgens bijvoorbeeld bodemtextuur een grote winst kunnen opleveren in de precisie van de schatters (dit zowel design-based als model-based).
+
+
+
 ### Schatting StemVolume_m3_ha TOESTAND per periode
 
 ```{r}
