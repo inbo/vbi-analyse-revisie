@@ -309,8 +309,9 @@ df20 %>%
                  colour = gepaard,
                  shape = gepaard),
              alpha = 0.3) +
-  # geom_smooth(aes(x = fitted(Model.lmer_20), 
-  #                y = resid(Model.lmer_20))) +
+  geom_smooth(aes(x = fitted(Model.lmer_20),
+                 y = resid(Model.lmer_20)),
+              alpha = 0.4) +
   geom_hline(yintercept = 0) + 
   facet_wrap(~gepaard)
 
@@ -861,7 +862,25 @@ verschil_paired %>%
     caption = "Schatting van verschil op basis van mixed model met enkel gepaarde plots"
   )
 ```
-### Vergelijk random effects tussen gepaarde en niet gepaarde plots
+
+
+```{r}
+df20_paired_plots %>%
+  # group_by(IDGroup) %>%
+  # mutate(gepaard = ifelse(n() == 2, "1 en 2", as.character(Periode))) %>%
+  ggplot() +
+  geom_point(aes(x = fitted(Model.lmer_vol_paired), 
+                 y = resid(Model.lmer_vol_paired),
+                 colour = fPeriode,
+                 shape = fPeriode),
+             alpha = 0.3) +
+  geom_smooth(aes(x = fitted(Model.lmer_vol_paired),
+                 y = resid(Model.lmer_vol_paired))) +
+  geom_hline(yintercept = 0)
+```
+
+
+### Vergelijk random effects en residuen tussen gepaarde en niet gepaarde plots
 
 ```{r}
 df20_all_plots <- df20_paired %>%
@@ -957,7 +976,7 @@ correlation_paired_summary %>%
 ```
 We vergelijken drie scenario's.
 
-## Sceanrio 1
+## Scenario 1
 
 + Zelfde gemiddelde en variantie voor gepaarde en niet gepaarde plots
   + 1000 plots waarvan de helft gepaard
@@ -1069,7 +1088,7 @@ bind_rows(
 ```
 
 
-## Sceanrio 2
+## Scenario 2
 
 Dit scenario komt overeen met de situatie van de Vlaamse bosinventarisatie:
 
@@ -1189,7 +1208,7 @@ bind_rows(
   datatable(rownames = FALSE)
 ```
 
-## Sceanrio 3
+## Scenario 3
 
 + Hogere gemiddelde volumes voor gepaarde plots maar gelijke toename in vergelijking met niet gepaarde plots
   + 1000 plots waarvan de helft gepaard
