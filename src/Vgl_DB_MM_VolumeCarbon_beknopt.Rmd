@@ -1,6 +1,6 @@
 ---
 title: "Volume, biomassa en koolstofgehalte volgens FRL en INBO-advies A.3104 (methode 4b)"
-author: "Anja Leyman, Leen Govaere"
+author: "Anja Leyman, Leen Govaere, Toon Westra, Hans Van Calster"
 date: "`r Sys.Date()`"
 output:
   html_document:
@@ -309,9 +309,10 @@ df20 %>%
                  colour = gepaard,
                  shape = gepaard),
              alpha = 0.3) +
-  geom_smooth(aes(x = fitted(Model.lmer_20), 
-                 y = resid(Model.lmer_20))) +
-  geom_hline(yintercept = 0)
+  # geom_smooth(aes(x = fitted(Model.lmer_20), 
+  #                y = resid(Model.lmer_20))) +
+  geom_hline(yintercept = 0) + 
+  facet_wrap(~gepaard)
 
 ggplot(df20, aes(x = IDGroup, y = E, colour = fPeriode, group = IDGroup)) +
   geom_point() +
@@ -363,9 +364,9 @@ Met de huidige modelstructuur is er duidelijk een probleem bij de figuur die res
 De reden hiervoor is waarschijnlijk dat niet alle aspecten van het design in rekening gebracht werden.
 De random-effects structuur moet alle mogelijke gevallen reflecteren:
 
-- plot is verplaatst (relocated)
-- plot is vervangen (replaced)
-- plot is behouden en teruggevonden
+- plot is behouden en teruggevonden (relocated = TRUE)
+- plot is verplaatst naar bosrand (replaced = TRUE)
+- plot is niet teruggevonden en nieuw plot gelegd (relocated = FALSE)
 
 ook nodig om rekening te houden met:
 
@@ -1305,7 +1306,7 @@ bind_rows(
   dplyr::select(type, periode, variable, estimate) %>%
   datatable(rownames = FALSE)
 ```
-# Conclusies
+# Voorlopige conclusies
 
 + Design-based schattingen van de toestand zijn steeds onvertekend. Het geschatte verschil tussen twee periodes zal echter een lagere precisie hebben als dit gebaseerd is op het verschil tussen de gemiddeldes per periode. Dit komt omdat we dan geen rekening houden met de gepaardheid tussen de plots.
 
@@ -1314,3 +1315,11 @@ bind_rows(
 + Model-based schattingen kunnen onvertekende en preciezere schattingen geven van het verschil tussen periodes: 
   + Wanneer de dataset enkel uit gepaarde plots bestaan, 
   + of wanneer de gemiddeldes en de toename tussen de periodes niet sterk verschillen voor gepaarde en niet gepaarde plots
+  
+# Verder te bekijken
+
++ aanpassing mixed-model zodat meetnetontwerp beter wordt gemodelleerd zodat we geen patronen meer terugvinden in de residuen
+
++ kijken naar ruimtelijke patronen van de mixed-models
+
++ mogelijkheden van post-stratificatie verkennen
